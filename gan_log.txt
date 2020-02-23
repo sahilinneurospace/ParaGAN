@@ -1,0 +1,1 @@
+Model success for state:  g_num_layers = 2, g_init_frames = 256, g_init_dim = 4, d_num_layers = 2, d_final_frames = 512
