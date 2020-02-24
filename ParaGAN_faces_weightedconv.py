@@ -46,10 +46,12 @@ class ParaGAN():
 		
 		
 		# Build the generator models
-		self.generator_models = self.build_generator(g_num_layers, g_init_frames, g_init_dim)
+		self.generator_models = self.build_generator_models(g_num_layers, g_init_frames, g_init_dim)
+		i = 0
 		for model in self.generator_models:
-			model.load_weights('checkpoints/face_generator.hdf5')
+			model.load_weights('checkpoints/face_generator_'+str(i)+'.hdf5')
 			model.trainable = False
+			i += 1
 		#Build the age estimator
 		self.age_estimator = self.build_age_estimator()
 		self.age_estimator.load_weights('checkpoints/agenet-05-1.63.hdf5')
