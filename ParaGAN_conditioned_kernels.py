@@ -24,6 +24,7 @@ from keras.models import Model
 import numpy as np
 
 def pgan_loss(y_true, y_pred):
+	print(y_true, y_pred)
 	age_true, race_true, y_true = y_true[:, 1], y_true[:, 2:], y_true[:, 0]
 	age_pred, race_pred, y_pred = y_pred[:, 1], y_pred[:, 2:], y_pred[:, 0]
 	age_loss = tf.reduce_mean(tf.to_float(tf.less(age_true, 20))*tf.maximum(tf.abs(age_pred-age_true)-5, 0) + tf.to_float(tf.logical_and(tf.greater_equal(age_true,20), tf.less(age_true,55)))*tf.maximum(tf.abs(age_pred-age_true)-10, 0) + tf.to_float(tf.logical_and(tf.greater_equal(age_true,55), tf.less(age_true,85)))*tf.maximum(tf.abs(age_pred-age_true)-20, 0) + tf.to_float(tf.greater_equal(age_true,85))*tf.maximum(tf.abs(age_pred-age_true)-30, 0))
@@ -64,7 +65,6 @@ class FixedWeightConv2D(Layer):
     def call(self, x):
         assert isinstance(x, list)
         a, b = x
-        print(a, b)
         return K.conv2d(a, b, padding='same')
 
     def compute_output_shape(self, input_shape):
@@ -93,6 +93,7 @@ class ParaGAN():
 		
 		# Build the generator
 		self.generator = self.build_generator(g_num_layers, g_init_frames, g_init_dim)
+		self.generator.summary()
 		
 		# Build the discriminator
 		self.discriminator = self.build_discriminator(d_num_layers, d_final_frames)
@@ -100,12 +101,12 @@ class ParaGAN():
 		
 		# Build the age estimator
 		self.age_estimator = self.build_age_estimator()
-		self.age_estimator.load_weights('checkpoints/agenet-05-1.63.hdf5')
+		#self.age_estimator.load_weights('checkpoints/agenet-05-1.63.hdf5')
 		self.age_estimator.trainable = False
 		
 		# Build the race estimator
 		self.race_estimator = self.build_race_estimator()
-		self.race_estimator.load_weights('checkpoints/racenet-05-0.76.hdf5')
+		#self.race_estimator.load_weights('checkpoints/racenet-05-0.76.hdf5')
 		self.race_estimator.trainable = False
 		
 		# The generator takes noise as input and generates imgs
@@ -124,7 +125,7 @@ class ParaGAN():
 	def build_generator(self, g_num_layers, g_init_frames, g_init_dim):
 
 		features = Input(shape=(self.num_features,))
-		latent_vec = Input(shape=(latent_dim,))
+		latent_vec = Input(shape=(self.latent_dim,))
 
 		x = Dense(g_init_frames * g_init_dim * g_init_dim, activation="relu", input_dim=self.latent_dim)(latent_vec)
 		x = Reshape((g_init_dim, g_init_dim, g_init_frames))(x)
@@ -151,7 +152,7 @@ class ParaGAN():
 		frames = int(d_final_frames/2**d_num_layers)
 		
 		model.add(Conv2D(frames, kernel_size=3, strides=2, padding="same", input_shape=(self.img_rows, self.img_cols, self.channels)))
-		model.add(LeakyReLU(0.2)
+		model.add(LeakyReLU(0.2))
 		
 		for _ in range(d_num_layers-1):
 			model.add(Conv2D(frames, kernel_size=3, strides=2, padding="same"))
@@ -177,9 +178,9 @@ class ParaGAN():
 		maxp2_age = MaxPooling2D(strides=(2,2))(conv2_age)
 		conv3_age = Conv2D(128, (3,3), padding="same")(maxp2_age)
 		maxp3_age = MaxPooling2D(strides=(2,2))(conv3_age)
-		l1_age = Reshape((32768,))(maxp1_age)
-		l2_age = Reshape((16384,))(maxp2_age)
-		l3_age = Reshape((8192,))(maxp3_age)
+		l1_age = Flatten()(maxp1_age)
+		l2_age = Flatten()(maxp2_age)
+		l3_age = Flatten()(maxp3_age)
 		fc_age = Concatenate()([l1_age, l2_age, l3_age])
 		age = Dense(1)(fc_age)
 		
@@ -194,9 +195,9 @@ class ParaGAN():
 		maxp2_race = MaxPooling2D(strides=(2,2))(conv2_race)
 		conv3_race = Conv2D(128, (3,3), padding="same")(maxp2_race)
 		maxp3_race = MaxPooling2D(strides=(2,2))(conv3_race)
-		l1_race = Reshape((32768,))(maxp1_race)
-		l2_race = Reshape((16384,))(maxp2_race)
-		l3_race = Reshape((8192,))(maxp3_race)
+		l1_race = Flatten()(maxp1_race)
+		l2_race = Flatten()(maxp2_race)
+		l3_race = Flatten()(maxp3_race)
 		fc_race = Concatenate()([l1_race, l2_race, l3_race])
 		race_logits = Dense(5)(fc_race)
 		
@@ -210,7 +211,7 @@ class ParaGAN():
 			random.shuffle(data)
 			for idx in range(int(len(data)/batch_size)):
 				batch_files = data[idx*batch_size:(idx+1)*batch_size]
-				batch = [(np.array(scipy.misc.imresize(scipy.misc.imread(batch_file), (self.img_rows, self.img_cols))) for batch_file in batch_files]
+				batch = [np.array(scipy.misc.imresize(scipy.misc.imread(batch_file), (self.img_rows, self.img_cols))) for batch_file in batch_files]
 				batch = [x/127.5 - 1 for x in batch]
 				batch = np.array(batch).astype(np.float32)
 				ages = np.random.uniform(0, 125, (batch_size,1))
@@ -229,3 +230,6 @@ class ParaGAN():
 					errG = self.paragan.train_on_batch([f_in, rand_noise], [np.ones(batch_size), ages, race_probs])
 				
 				print("Epoch {:2d} [{:2d}]/[{:2d}]: errD_fake = {:.4f}, errD_real = {:.4f}, errG = {:.4f}".format(epoch, idx, int(len(data)/batch_size), errD_fake, errD_real, errG))
+
+if __name__ == '__main__':
+	paragan = ParaGAN()
