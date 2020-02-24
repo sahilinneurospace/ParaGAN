@@ -4,7 +4,7 @@ from keras.datasets import mnist
 from keras.layers import Input, Dense, Reshape, Flatten, Dropout, Concatenate, Average, Multiply, Add
 from keras.layers import BatchNormalization, Activation, ZeroPadding2D, MaxPooling2D
 from keras.layers.advanced_activations import LeakyReLU
-from keras.layers.convolutional import UpSampling2D, Conv2D
+from keras.layers.convolutional import UpSampling2D, Conv2D, Conv2DTranspose
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
 
@@ -104,12 +104,9 @@ class GAN():
 		return Model(img, valid)
 	
 
-	def train(self, epochs=1, k=5, n_discriminator_update=1, n_generator_update=2, batch_size=64, save_interval=500):
+	def train(self, epochs=1, n_discriminator_update=1, n_generator_update=2, batch_size=64, save_interval=500):
 
 		data = glob(os.path.join("../faces/*"))
-		last_k_g_losses = list(range(k))
-		test = 1
-		str = ""
 		
 		for epoch in range(epochs):
 			random.shuffle(data)
@@ -135,23 +132,12 @@ class GAN():
 					errG = self.GAN.train_on_batch(batch_z, np.ones(batch_size))
 				
 				print("Epoch {:2d} [{:2d}]/[{:2d}]: errD_fake = {:.4f}, errD_real = {:.4f}, errG = {:.4f}".format(epoch, idx, int(len(data)/batch_size), errD_fake, errD_real, errG))
-				last_k_g_losses = last_k_g_losses[1:] + [errG]
-				if(sum([last_k_g_losses[i] == last_k_g_losses[0] for i in range(k)]) == k):
-					test = 0
-					break
-		str = "Model state:  g_num_layers = " + str(self.g_num_layers) + ", g_init_frames = " + str(self.g_init_frames) +
-		", g_init_dim = " + str(self.g_init_dim) + ", d_num_layers = " + str(self.d_num_layers) + ", d_final_frames = " + str(self.d_final_frames)
-		+ ", errG = " + str(errG) + ", errD_fake = " + str(errD_fake) + ", errD_real = " + str(errD_real)
-		return str
 
 
 if __name__ == '__main__':
-	out = ""
 	for d_num_layers in [2, 3, 4]:
 		for g_num_layers in [2, 3, 4]:
 			for d_final_frames in [128, 256, 512]:
 				for g_init_frames in [128, 256, 512]:
 					gan = GAN(d_num_layers=d_num_layers, g_num_layers=g_num_layers, d_final_frames=d_final_frames, g_init_frames=g_init_frames)
-					out += gan.train() + "\n"
-	with open("gan_log.txt", "w") as f:
-		f.write(out)
+					gan.train()
