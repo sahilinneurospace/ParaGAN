@@ -23,11 +23,12 @@ from keras.models import Model
 
 import numpy as np
 
-def age_loss(y_true, y_pred):
-	return tf.reduce_mean(tf.to_float(tf.less(y_true, 20))*tf.maximum(tf.abs(y_pred-y_true)-5, 0) + tf.to_float(tf.logical_and(tf.greater_equal(y_true,20), tf.less(y_true,55)))*tf.maximum(tf.abs(y_pred-y_true)-10, 0) + tf.to_float(tf.logical_and(tf.greater_equal(y_true,55), tf.less(y_true,85)))*tf.maximum(tf.abs(y_pred-y_true)-20, 0) + tf.to_float(tf.greater_equal(y_true,85))*tf.maximum(tf.abs(y_pred-y_true)-30, 0))
-
-def race_loss(y_true, y_pred):
-	return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+def pgan_loss(y_true, y_pred):
+	age_true, race_true, y_true = y_true[:, 1], y_true[:, 2:], y_true[:, 0]
+	age_pred, race_pred, y_pred = y_pred[:, 1], y_pred[:, 2:], y_pred[:, 0]
+	age_loss = tf.reduce_mean(tf.to_float(tf.less(age_true, 20))*tf.maximum(tf.abs(age_pred-age_true)-5, 0) + tf.to_float(tf.logical_and(tf.greater_equal(age_true,20), tf.less(age_true,55)))*tf.maximum(tf.abs(age_pred-age_true)-10, 0) + tf.to_float(tf.logical_and(tf.greater_equal(age_true,55), tf.less(age_true,85)))*tf.maximum(tf.abs(age_pred-age_true)-20, 0) + tf.to_float(tf.greater_equal(age_true,85))*tf.maximum(tf.abs(age_pred-age_true)-30, 0))
+	race_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=race_true, logits=race_pred))
+	return -(1-y_true)*K.log(1-y_pred) - y_true*(K.log(y_pred)+y_pred*(K.mean(age_loss, race_loss)))
 
 class Conv2DFilterGen(Layer):
 
@@ -116,8 +117,8 @@ class ParaGAN():
 		self.discriminator.trainable = False
 		valid = self.discriminator(img)
 		
-		self.combined = Model([features, latent_vec], [valid, age, race])
-		self.combined.compile(loss=["binary_crossentropy", age_loss, race_loss], optimizer=optimizer, loss_weights=[0.5, 0.5, 0.])
+		self.paragan = Model([features, latent_vec], [valid, age, race])
+		self.paragan.compile(loss=pgan_loss, optimizer=optimizer)
 
 
 	def build_generator(self, g_num_layers, g_init_frames, g_init_dim):
@@ -200,3 +201,31 @@ class ParaGAN():
 		race_logits = Dense(5)(fc_race)
 		
 		return Model(inputs=x_race, outputs=race_logits)
+
+	def train(self, epochs=1, n_discriminator_update=1, n_generator_update=2, batch_size=64, save_interval=500):
+
+		data = glob(os.path.join("../faces/*"))
+		
+		for epoch in range(epochs):
+			random.shuffle(data)
+			for idx in range(int(len(data)/batch_size)):
+				batch_files = data[idx*batch_size:(idx+1)*batch_size]
+				batch = [(np.array(scipy.misc.imresize(scipy.misc.imread(batch_file), (self.img_rows, self.img_cols))) for batch_file in batch_files]
+				batch = [x/127.5 - 1 for x in batch]
+				batch = np.array(batch).astype(np.float32)
+				ages = np.random.uniform(0, 125, (batch_size,1))
+				race_probs_ = np.random.randint(0, 1e5, (batch_size, 5))
+				race_probs = np.array([race_probs_[i] / np.max(race_probs_, 1)[i] for i in range(batch_size)])
+				f_in = np.concatenate((ages, race_probs), 1)
+				rand_noise = np.random.uniform(0,1,(batch_size, self.latent_dim))
+				# Update D network
+				for _ in range(n_discriminator_update):
+					imgs = self.generator.predict([f_in, rand_noise])
+					errD_fake = self.discriminator.train_on_batch(batch, np.ones(batch_size))
+					errD_real = self.discriminator.train_on_batch(imgs, np.zeros(batch_size))
+
+				# Update G network
+				for _ in range(n_generator_update):
+					errG = self.paragan.train_on_batch([f_in, rand_noise], [np.ones(batch_size), ages, race_probs])
+				
+				print("Epoch {:2d} [{:2d}]/[{:2d}]: errD_fake = {:.4f}, errD_real = {:.4f}, errG = {:.4f}".format(epoch, idx, int(len(data)/batch_size), errD_fake, errD_real, errG))
