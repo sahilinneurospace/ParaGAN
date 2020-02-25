@@ -74,7 +74,7 @@ class FixedWeightConv2D(Layer):
 
 class ParaGAN():
 	
-	def __init__(self, g_num_layers=3, g_init_frames=512, g_init_dim=4, d_num_layers=3, d_final_frames=512):
+	def __init__(self, g_num_layers=3, g_init_frames=512, g_init_dim=8, d_num_layers=3, d_final_frames=512):
 		# Input shape
 		self.g_num_layers = g_num_layers
 		self.g_init_frames = g_init_frames
