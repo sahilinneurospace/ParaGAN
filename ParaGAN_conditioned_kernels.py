@@ -29,7 +29,7 @@ def pgan_loss(y_true, y_pred):
 	age_pred, race_pred, y_pred = y_pred[:, 1], y_pred[:, 2:], y_pred[:, 0]
 	age_loss = tf.reduce_mean(tf.to_float(tf.less(age_true, 20))*tf.maximum(tf.abs(age_pred-age_true)-5, 0) + tf.to_float(tf.logical_and(tf.greater_equal(age_true,20), tf.less(age_true,55)))*tf.maximum(tf.abs(age_pred-age_true)-10, 0) + tf.to_float(tf.logical_and(tf.greater_equal(age_true,55), tf.less(age_true,85)))*tf.maximum(tf.abs(age_pred-age_true)-20, 0) + tf.to_float(tf.greater_equal(age_true,85))*tf.maximum(tf.abs(age_pred-age_true)-30, 0))
 	race_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=race_true, logits=race_pred))
-	return -(1-y_true)*K.log(1-y_pred) - y_true*(K.log(y_pred)+y_pred*(K.mean(age_loss, race_loss)))
+	return -(1-y_true)*K.log(1-y_pred) - y_true*(K.log(y_pred)+y_pred*0.5*(age_loss+race_loss))
 
 class Conv2DFilterGen(Layer):
 
@@ -118,7 +118,8 @@ class ParaGAN():
 		self.discriminator.trainable = False
 		valid = self.discriminator(img)
 		
-		self.paragan = Model([features, latent_vec], [valid, age, race])
+		self.paragan = Model([features, latent_vec], Concatenate()([valid, age, race]))
+		self.paragan.summary()
 		self.paragan.compile(loss=pgan_loss, optimizer=optimizer)
 
 
@@ -227,7 +228,7 @@ class ParaGAN():
 
 				# Update G network
 				for _ in range(n_generator_update):
-					errG = self.paragan.train_on_batch([f_in, rand_noise], [np.ones(batch_size), ages, race_probs])
+					errG = self.paragan.train_on_batch([f_in, rand_noise], np.concatenate((np.ones(batch_size), ages, race_probs)))
 				
 				print("Epoch {:2d} [{:2d}]/[{:2d}]: errD_fake = {:.4f}, errD_real = {:.4f}, errG = {:.4f}".format(epoch, idx, int(len(data)/batch_size), errD_fake, errD_real, errG))
 
