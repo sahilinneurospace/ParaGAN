@@ -55,7 +55,7 @@ class FixedWeightConv2D(Layer):
 
 class ParaGAN():
 	
-	def __init__(self, g_num_layers=3, g_init_frames=512, g_init_dim=8, d_num_layers=3, d_final_frames=512):
+	def __init__(self, g_num_layers=3, g_init_frames=512, g_init_dim=8, d_num_layers=3, d_final_frames=512, batch_size=50):
 		# Input shape
 		self.g_num_layers = g_num_layers
 		self.g_init_frames = g_init_frames
@@ -68,7 +68,7 @@ class ParaGAN():
 		self.img_shape = (self.img_rows, self.img_cols, self.channels)
 		self.latent_dim = 256
 		self.num_features = 6
-		self.batch_size=50
+		self.batch_size = batch_size
 		
 
 		optimizer = Adam(0.0002, 0.5, clipnorm=0.2)
