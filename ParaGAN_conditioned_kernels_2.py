@@ -19,7 +19,7 @@ import scipy
 import random
 from keras import backend as K
 from keras.layers import Layer, AveragePooling2D, Reshape, Flatten
-from keras.models import Model
+from keras.initializers import Constant
 
 import numpy as np
 
@@ -117,13 +117,13 @@ class ParaGAN():
 		
 		for _ in range(g_num_layers):
 			x = UpSampling2D()(x)
-			conv = Reshape((5, 5, frames, int(frames/2)))(Dense(5*5*frames*int(frames/2))(Dense(1)(Dense(self.num_features)(features))))
+			conv = Reshape((5, 5, frames, self.channels))(BatchNormalization(gamma_initializer=Constant(0.2))(Reshape((5, 5, frames*int(frames/2)))(Dense(5*5*frames*int(frames/2))(Dense(1)(Dense(self.num_features)(features))))))
 			x = FixedWeightConv2D()([x, conv])
 			x = Activation('relu')(x)
 			x = BatchNormalization(momentum=0.8)(x)
 			frames = int(frames/2)
 		
-		conv = Reshape((5, 5, frames, self.channels))(Dense(5*5*frames*self.channels)(Dense(1)(Dense(self.num_features)(features))))
+		conv = Reshape((5, 5, frames, self.channels))(BatchNormalization(gamma_initializer=Constant(0.2))(Reshape((5, 5, frames*int(frames/2)))(Dense(5*5*frames*self.channels)(Dense(1)(Dense(self.num_features)(features))))))
 		img = FixedWeightConv2D()([x, conv])
 
 		return Model([features, latent_vec], img)
